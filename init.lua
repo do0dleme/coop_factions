@@ -56,12 +56,12 @@ end
 -----------------------
 
 minetest.register_chatcommand("add_faction", {
-    params = "<faction name>",
+    params = "<faction>",
     privs = {
         faction_add = true,
         interact = true,
     },
-    description = "Allows admins/moderators to add factions",
+    description = "Allow admins/moderators to add factions.",
     func = function(username, params)
         if minetest.deserialize(storage:get_string("factions")) then
             local facs = minetest.deserialize(storage:get_string("factions"))
@@ -103,190 +103,160 @@ minetest.register_chatcommand("add_faction", {
 })
 
 minetest.register_chatcommand("start_faction", {
-    params = "<faction name>",
-    privs = {
-        start_faction = true
-    },
-    description = "Allows users to start factions",
-    func = function(username, params)
-        local user = minetest.get_player_by_name(username)
-        if minetest.deserialize(storage:get_string("factions")) then
-            local facs = minetest.deserialize(storage:get_string("factions"))
-            facs[#facs+1] = params
-            print_all_of(facs)
-
-            print(minetest.serialize(facs))
-
-            storage:set_string("factions", minetest.serialize(facs))
-
-            local x = minetest.deserialize(storage:get_string("faction_color"))
-            if not x then
-                x = {}
-            end
-
-            x[params] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-
-            storage:set_string("faction_color", minetest.serialize(x))
-        else
-            storage:set_string("factions", minetest.serialize({params}))
-
-            local x = minetest.deserialize(storage:get_string("faction_color"))
-            if not x then
-                x = {}
-            end
-
-            x[params] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-            storage:set_string("faction_color", minetest.serialize(x))
+    params = "<faction>",
+    privs = {start_faction = true},
+    description = "Start a faction.",
+    func = function(playerName, factionName)
+        local factionNames = minetest.deserialize(storage:get_string("factions"))
+        if not factionNames then
+            factionNames = {}
         end
-        user:set_attribute("faction", params)
-        local nick = user:get_attribute("faction")
-        factions.set_player_faction(username, nick)
+        factionNames[#factionNames+1] = factionName
+        storage:set_string("factions", minetest.serialize(factionNames))
+        minetest.chat_send_player(playerName, factionName .. " faction created.")
 
-        if not x then
-            x = {}
-
-            x[params] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-
-            storage:set_string("faction_color", minetest.serialize(x))
+        local factionColors = minetest.deserialize(storage:get_string("faction_color"))
+        if not factionColors then
+            factionColors = {}
         end
+        local factionColor = {r = 255, g = 255, b = 0}   -- Default the new faction's color to white.
+        factionColors[factionName] = factionColor
+        storage:set_string("faction_color", minetest.serialize(factionColors))
+        local player = minetest.get_player_by_name(playerName)
+        player:set_nametag_attributes({text = "(" .. factionName .. ") " .. playerName, color = factionColor})
+        minetest.chat_send_player(playerName, factionName .. " faction's color (and yours) set to the default--white (255, 255, 255).")
 
-        local colors = x[user:get_attribute("faction")]
+        player:set_attribute("faction", factionName)
+        factions.set_player_faction(playerName, factionName)
+        minetest.chat_send_player(playerName, "Your faction set to " .. factionName .. ".")
 
-        if nick then
-            user:set_nametag_attributes({text = "(" .. nick .. ")" .. " " .. user:get_player_name(), color = colors})
-        end
-        local privs = minetest.get_player_privs(username)
+        local privs = minetest.get_player_privs(playerName)
         privs.faction_leader = true
-        minetest.set_player_privs(username, privs)
+        minetest.set_player_privs(playerName, privs)
+        minetest.chat_send_player(playerName, "Made you the leader of the " .. factionName .. " faction.")
     end
 })
 
 minetest.register_chatcommand("invite_to_faction", {
-    params = "<faction name>",
+    params = "<player>",
     privs = {
         interact = true,
         faction_leader = true
     },
-    description = "Invite a player into a faction",
-    func = function(username, param)
-        local user = minetest.get_player_by_name(username)
-        local player = minetest.get_player_by_name(param)
+    description = "Invite a player into your faction.",
+    func = function(playerInvitingName, playerInvitedName)
+        local playerInviting = minetest.get_player_by_name(playerInvitingName)
+        local playerInvited = minetest.get_player_by_name(playerInvitedName)
 
-        if not player then
-            minetest.chat_send_player(user:get_player_name(), "That player does not exist or is not online")
-        else
-            if player:get_attribute("factions") then
-                local facs = minetest.deserialize(player:get_attribute("factions"))
-                facs[#facs+1] = user:get_attribute("faction")
-                print_all_of(facs)
-
-                player:set_attribute("factions", minetest.serialize(facs))
-            else
-                player:set_attribute("factions", minetest.serialize({user:get_attribute("faction")}))
-            end
+        if not playerInvited then
+            return false, "Player, " .. playerInvitedName .. ", is not on-line."
         end
+
+        local serializedInvitedToFactions = playerInvited:get_attribute("factions")
+        local invitedToFactions
+        if serializedInvitedToFactions then
+            invitedToFactions = minetest.deserialize(serializedInvitedToFactions)
+        else
+            invitedToFactions = {}
+        end
+        local playerInvitingFaction = playerInviting:get_attribute("faction")
+        invitedToFactions[#invitedToFactions+1] = playerInvitingFaction   -- Add faction of playerInviting who is inviting them to the list of factions to which this player is invited.
+
+        playerInvited:set_attribute("factions", minetest.serialize(invitedToFactions))
+
+        minetest.chat_send_player(playerInvitedName, "Player, " .. playerInvitingName .. ", invited you to their faction (" .. playerInvitingFaction .. ").")
+        return true, "Player, " .. playerInvitedName .. ", invited to your faction (" .. playerInvitingFaction .. ")."
     end
 })
 
 minetest.register_chatcommand("join_faction", {
-    params = "<faction name>",
+    params = "<faction>",
     privs = {
         interact = true,
         faction_leader = false
     },
-    description = "Join a faction you are allowed into",
-    func = function(username, param)
-        local user = minetest.get_player_by_name(username)
+    description = "Join a faction to which you've been invited.",
+    func = function(playerJoiningName, factionName)
+        local playerJoining = minetest.get_player_by_name(playerJoiningName)
 
-        if not minetest.deserialize(user:get_attribute("factions")) then
-            user:set_attribute("factions", minetest.serialize({"neutral"}))
+        local serializedInvitedToFactions = playerJoining:get_attribute("factions")
+        local invitedToFactions = minetest.deserialize(serializedInvitedToFactions)
+        if not invitedToFactions then
+            invitedToFactions = {}
         end
 
-        if has_value(minetest.deserialize(user:get_attribute("factions")), param) then
-            user:set_attribute("faction", param)
-        else
-            return false, "You aren't allowed to join that faction."
+        if not has_value(invitedToFactions, factionName) then
+            return false, "You haven't been invited to the " .. factionName .. " faction."
         end
 
-        local nick = user:get_attribute("faction")
-        factions.set_player_faction(username, nick)
+        playerJoining:set_attribute("faction", factionName)
+        factions.set_player_faction(playerJoiningName, factionName)
 
-        if not x then
-            x = {}
-
-            x[user:get_attribute("faction")] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-
-            storage:set_string("faction_color", minetest.serialize(x))
+        local successMessage = "You've successfully joined the " .. factionName .. " faction."
+        local serializedFactionColors = storage:get_string("faction_color")
+        if not serializedFactionColors then
+            return true, successMessage
         end
 
-        local colors = x[user:get_attribute("faction")]
-
-        if nick then
-            user:set_nametag_attributes({text = "(" .. nick .. ")" .. " " .. user:get_player_name(), color = colors})
+        local factionColors = minetest.deserialize(serializedFactionColors)
+        if not factionColors then
+            return true, successMessage
         end
+
+        local factionColor = factionColors[factionName]
+        if not factionColor then
+            factionColor = {r = 255, g = 255, b = 255}
+        end
+
+        playerJoining:set_nametag_attributes({text = "(" .. factionName .. ") " .. playerJoiningName, color = factionColor})
+
+        return true, successMessage
     end
 })
 
-minetest.register_chatcommand("set_faction_color", {
-    params = "<red> <green> <blue>",
+minetest.register_chatcommand("faction_color", {
+    params = "<r (0-255)> <g (0-255)> <b (0-255)>",
     privs = {
         interact = true,
         faction_leader = true
     },
-    description = "Set the color of a faction",
-    func = function(username, param)
-        local user = minetest.get_player_by_name(username)
-        local params = string.split(param, " ")
-        local red = params[1]
-        local green = params[2]
-        local blue = params[3]
+    description = "Set your faction's color.",
+    func = function(playerName, colorComponents)
+        local player = minetest.get_player_by_name(playerName)
+        colorComponents = string.split(colorComponents, " ")
+        local r = colorComponents[1]
+        local g = colorComponents[2]
+        local b = colorComponents[3]
 
-        if red == nil or green == nil or blue == nil then
-            return false, "<red> <green> <blue>"
+        if r == nil or g == nil or b == nil then
+            return false, "<r (0-255)> <g (0-255)> <b (0-255)>"
         end
 
-        local x = minetest.deserialize(storage:get_string("faction_color"))
+        local factionColors = minetest.deserialize(storage:get_string("faction_color"))
 
-        x[user:get_attribute("faction")] = {
-            r = tonumber(red),
-            g = tonumber(green),
-            b = tonumber(blue),
-        }
+        local factionName = player:get_attribute("faction")
+        local newColor = {r = tonumber(r), g = tonumber(g), b = tonumber(b)}
+        factionColors[factionName] = newColor
+        storage:set_string("faction_color", minetest.serialize(factionColors))
 
-        storage:set_string("faction_color", minetest.serialize(x))
-        for _, player in ipairs(minetest.get_connected_players()) do
-            local nick = player:get_attribute("faction")
-            local faction_color = x[player:get_attribute("faction")]
-            if nick then
-                player:set_nametag_attributes({
-                    text = "(" .. nick .. ")" .. " " .. player:get_player_name(),
-                    color = faction_color
-                })
+        for _, eachPlayer in ipairs(minetest.get_connected_players()) do
+            local eachFactionName = eachPlayer:get_attribute("faction")
+            if eachFactionName == factionName then
+                local eachPlayerName = eachPlayer:get_player_name()
+                eachPlayer:set_nametag_attributes({text = "(" .. factionName .. ") " .. eachPlayerName, color = newColor})
+                minetest.chat_send_player(
+                    eachPlayerName,
+                    "The color of your faction (" .. factionName .. ") was just changed by " .. playerName .. "."
+                )
             end
         end
     end
 })
 
 minetest.register_chatcommand("set_faction", {
-    params = "<player> <faction name>",
+    params = "<player> <faction>",
 
-    description = "Set the faction of a player",
+    description = "Set a player's faction.",
     func = function(username, param)
         local user = minetest.get_player_by_name(username)
 
@@ -351,7 +321,7 @@ minetest.register_chatcommand("set_faction", {
 
 minetest.register_chatcommand("faction", {
     params = "",
-    description = "Print your faction",
+    description = "Print your faction.",
     func = function(username, param)
         local user = minetest.get_player_by_name(username)
         if not user:get_attribute("faction") then
@@ -364,7 +334,7 @@ minetest.register_chatcommand("faction", {
 
 minetest.register_chatcommand("faction_msg", {
     params = "<message>",
-    description = "Message everyone in faction",
+    description = "Message everyone in faction.",
     func = function(username, param)
         local text = username .. " said to your faction: " .. param
         local sender_faction = minetest.get_player_by_name(username):get_attribute("faction")
@@ -378,17 +348,17 @@ minetest.register_chatcommand("faction_msg", {
 })
 
 minetest.register_privilege("faction_add", {
-    description = "Add faction",
+    description = "Add a faction.",
     give_to_singleplayer = false
 })
 
 minetest.register_privilege("faction_leader", {
-    description = "Lead a faction",
+    description = "Lead a faction.",
     give_to_singleplayer = false
 })
 
 minetest.register_privilege("set_faction", {
-    description = "Set a player's faction",
+    description = "Set a player's faction.",
     give_to_singleplayer = false
 })
 
@@ -406,14 +376,16 @@ minetest.register_on_joinplayer(function(player)
         player:set_attribute("faction", "neutral")
     end
 
+    -- Backward compatibility:
     if type(minetest.deserialize(player:get_attribute("faction"))) == "table" then
        player:set_attribute("faction", "neutral")
     end
 
-    local nick = player:get_attribute("faction")
+    local playerFaction = player:get_attribute("faction")
 
-    if not factions.player_factions[player:get_player_name()] then
-        factions.player_factions[player:get_player_name()] = nick
+    local playerName = player:get_player_name()
+    if not factions.player_factions[playerName] then
+        factions.player_factions[playerName] = playerFaction
         storage:set_string("player_factions", minetest.serialize(factions.player_factions))
     end
 
@@ -422,7 +394,7 @@ minetest.register_on_joinplayer(function(player)
     if not x then
         x = {}
 
-        x[player:get_attribute("faction")] = {
+        x[playerFaction] = {
             r = 255,
             b = 255,
             g = 255
@@ -430,15 +402,16 @@ minetest.register_on_joinplayer(function(player)
 
         storage:set_string("faction_color", minetest.serialize(x))
     end
+
     if minetest.settings:get_bool("allow_starting_faction") then
-        local colors = x[player:get_attribute("faction")]
-        local privs = minetest.get_player_privs(player:get_player_name())
+        local colors = x[playerFaction]
+        local privs = minetest.get_player_privs(playerName)
         privs.start_faction = true
-        minetest.set_player_privs(player:get_player_name(), privs)
+        minetest.set_player_privs(playerName, privs)
     end
 
-    if nick then
-        player:set_nametag_attributes({text = "(" .. nick .. ")" .. " " .. player:get_player_name(), color = colors})
+    if playerFaction then
+        player:set_nametag_attributes({text = "(" .. playerFaction .. ")" .. " " .. playerName, color = colors})
     end
 end) 
 
