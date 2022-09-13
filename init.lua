@@ -16,6 +16,8 @@
 local gen_def = dofile(minetest.get_modpath("coop_factions") .. "/utils/base.lua")
 local actions = dofile(minetest.get_modpath("coop_factions") .. "/utils/actions.lua")
 
+nametag_mgr.ensure_modifier("coop_factions", " (", " faction)")
+
 factions = {}
 
 local storage = minetest.get_mod_storage()
@@ -71,36 +73,34 @@ minetest.register_chatcommand("add_faction", {
             print(minetest.serialize(facs))
 
             storage:set_string("factions", minetest.serialize(facs))
-
-            local x = minetest.deserialize(storage:get_string("faction_color"))
-            if not x then
-                x = {}
-            end
-
-            x[params] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-
-            storage:set_string("faction_color", minetest.serialize(x))
         else
             storage:set_string("factions", minetest.serialize({params}))
-
-            local x = minetest.deserialize(storage:get_string("faction_color"))
-            if not x then
-                x = {}
-            end
-
-            x[params] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-            storage:set_string("faction_color", minetest.serialize(x))
         end
     end
 })
+
+local function rgb_to_hex(rgb)
+    local hexadecimal = '#'
+    for key, fval in ipairs({'r', 'g', 'b'}) do
+        local value = tonumber(rgb[fval])
+        local hex = ''
+        while(value > 0) do
+            local index = math.fmod(value, 16) + 1
+            value = math.floor(value / 16)
+            hex = string.sub('0123456789ABCDEF', index, index) .. hex            
+        end
+
+        if(string.len(hex) == 0)then
+            hex = '00'
+
+        elseif(string.len(hex) == 1)then
+            hex = '0' .. hex
+        end
+
+        hexadecimal = hexadecimal .. hex
+    end
+    return hexadecimal
+end
 
 minetest.register_chatcommand("start_faction", {
     params = "<faction name>",
@@ -118,58 +118,21 @@ minetest.register_chatcommand("start_faction", {
             print(minetest.serialize(facs))
 
             storage:set_string("factions", minetest.serialize(facs))
-
-            local x = minetest.deserialize(storage:get_string("faction_color"))
-            if not x then
-                x = {}
-            end
-
-            x[params] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-
-            storage:set_string("faction_color", minetest.serialize(x))
         else
             storage:set_string("factions", minetest.serialize({params}))
-
-            local x = minetest.deserialize(storage:get_string("faction_color"))
-            if not x then
-                x = {}
-            end
-
-            x[params] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-            storage:set_string("faction_color", minetest.serialize(x))
         end
         user:set_attribute("faction", params)
         local nick = user:get_attribute("faction")
         factions.set_player_faction(username, nick)
 
-        if not x then
-            x = {}
-
-            x[params] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-
-            storage:set_string("faction_color", minetest.serialize(x))
-        end
-
-        local colors = x[user:get_attribute("faction")]
-
-        if nick then
-            user:set_nametag_attributes({text = "(" .. nick .. ")" .. " " .. user:get_player_name(), color = colors})
-        end
         local privs = minetest.get_player_privs(username)
         privs.faction_leader = true
         minetest.set_player_privs(username, privs)
+
+        nametag_mgr.ensure_modifier_group("coop_factions", params)
+        nametag_mgr.set_player_modifier_group(username, "coop_factions", params)
+        
+        minetest.chat_send_player(username, "Created the "..params.." faction, with you as leader.")
     end
 })
 
@@ -185,18 +148,22 @@ minetest.register_chatcommand("invite_to_faction", {
         local player = minetest.get_player_by_name(param)
 
         if not player then
-            minetest.chat_send_player(user:get_player_name(), "That player does not exist or is not online")
-        else
-            if player:get_attribute("factions") then
-                local facs = minetest.deserialize(player:get_attribute("factions"))
-                facs[#facs+1] = user:get_attribute("faction")
-                print_all_of(facs)
-
-                player:set_attribute("factions", minetest.serialize(facs))
-            else
-                player:set_attribute("factions", minetest.serialize({user:get_attribute("faction")}))
-            end
+            return false, "That player does not exist or is not online."
         end
+
+        local userFaction = user:get_attribute("faction")
+        if player:get_attribute("factions") then
+            local facs = minetest.deserialize(player:get_attribute("factions"))
+            facs[#facs+1] = userFaction
+            print_all_of(facs)
+
+            player:set_attribute("factions", minetest.serialize(facs))
+        else
+            player:set_attribute("factions", minetest.serialize({userFaction}))
+        end
+
+        minetest.chat_send_player(param, username.." invited you to their (the "..userFaction..") faction.")
+        return true, "Invited "..param.." to your (the "..userFaction..") faction."
     end
 })
 
@@ -206,7 +173,7 @@ minetest.register_chatcommand("join_faction", {
         interact = true,
         faction_leader = false
     },
-    description = "Join a faction you are allowed into",
+    description = "Join a faction to which you've been invited.",
     func = function(username, param)
         local user = minetest.get_player_by_name(username)
 
@@ -217,29 +184,15 @@ minetest.register_chatcommand("join_faction", {
         if has_value(minetest.deserialize(user:get_attribute("factions")), param) then
             user:set_attribute("faction", param)
         else
-            return false, "You aren't allowed to join that faction."
+            return false, "You haven't been invited to the "..param.." faction."
         end
 
         local nick = user:get_attribute("faction")
         factions.set_player_faction(username, nick)
-
-        if not x then
-            x = {}
-
-            x[user:get_attribute("faction")] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-
-            storage:set_string("faction_color", minetest.serialize(x))
-        end
-
-        local colors = x[user:get_attribute("faction")]
-
-        if nick then
-            user:set_nametag_attributes({text = "(" .. nick .. ")" .. " " .. user:get_player_name(), color = colors})
-        end
+        
+        nametag_mgr.set_player_modifier_group(username, "coop_factions", param)
+        
+        return true, "You've joined the "..param.." faction."
     end
 })
 
@@ -261,25 +214,17 @@ minetest.register_chatcommand("set_faction_color", {
             return false, "<red> <green> <blue>"
         end
 
-        local x = minetest.deserialize(storage:get_string("faction_color"))
-
-        x[user:get_attribute("faction")] = {
+        local factionName = user:get_attribute("faction")
+        local rgb = {
             r = tonumber(red),
             g = tonumber(green),
             b = tonumber(blue),
         }
 
-        storage:set_string("faction_color", minetest.serialize(x))
-        for _, player in ipairs(minetest.get_connected_players()) do
-            local nick = player:get_attribute("faction")
-            local faction_color = x[player:get_attribute("faction")]
-            if nick then
-                player:set_nametag_attributes({
-                    text = "(" .. nick .. ")" .. " " .. player:get_player_name(),
-                    color = faction_color
-                })
-            end
-        end
+        local hexColor = rgb_to_hex(rgb)
+        nametag_mgr.ensure_modifier_group("coop_factions", factionName, hexColor)
+        
+        return true, "Updated the color of your faction ("..factionName..") to "..hexColor.."."
     end
 })
 
@@ -326,26 +271,6 @@ minetest.register_chatcommand("set_faction", {
 
         local nick = player:get_attribute("faction")
         factions.set_player_faction(to, nick)
-
-        local x = minetest.deserialize(storage:get_string("faction_color"))
-
-        if not x then
-            x = {}
-
-            x[player:get_attribute("faction")] = {
-                r = 255,
-                g = 255,
-                b = 255,
-            }
-
-            storage:set_string("faction_color", minetest.serialize(x))
-        end
-
-        local colors = x[player:get_attribute("faction")]
-
-        if nick then
-            player:set_nametag_attributes({text = "(" .. nick .. ")" .. " " .. player:get_player_name(), color = colors })
-        end
     end
 })
 
@@ -354,11 +279,11 @@ minetest.register_chatcommand("faction", {
     description = "Print your faction",
     func = function(username, param)
         local user = minetest.get_player_by_name(username)
-        if not user:get_attribute("faction") then
-            return true, ""
-        else
-            return true, user:get_attribute("faction")
+        local factionName = user:get_attribute("faction")
+        if not factionName then
+            return false, "You're not in a faction."
         end
+        return true, "You're in the "..factionName.." faction."
     end
 })
 
@@ -417,28 +342,10 @@ minetest.register_on_joinplayer(function(player)
         storage:set_string("player_factions", minetest.serialize(factions.player_factions))
     end
 
-    local x = minetest.deserialize(storage:get_string("faction_color"))
-
-    if not x then
-        x = {}
-
-        x[player:get_attribute("faction")] = {
-            r = 255,
-            b = 255,
-            g = 255
-        }
-
-        storage:set_string("faction_color", minetest.serialize(x))
-    end
     if minetest.settings:get_bool("allow_starting_faction") then
-        local colors = x[player:get_attribute("faction")]
         local privs = minetest.get_player_privs(player:get_player_name())
         privs.start_faction = true
         minetest.set_player_privs(player:get_player_name(), privs)
-    end
-
-    if nick then
-        player:set_nametag_attributes({text = "(" .. nick .. ")" .. " " .. player:get_player_name(), color = colors})
     end
 end) 
 
@@ -561,53 +468,4 @@ minetest.register_on_punchnode(function(pos, node, puncher)
 		    -- Run node update actions like falling nodes
 		    minetest.check_for_falling(pos)
 	  end
-end)
-local function rgb_to_hex(rgb)
-    local hexadecimal = '#'
-    for key, fval in ipairs({'r', 'g', 'b'}) do
-        local value = tonumber(rgb[fval])
-        local hex = ''
-        while(value > 0) do
-            local index = math.fmod(value, 16) + 1
-            value = math.floor(value / 16)
-            hex = string.sub('0123456789ABCDEF', index, index) .. hex            
-        end
-
-        if(string.len(hex) == 0)then
-            hex = '00'
-
-        elseif(string.len(hex) == 1)then
-            hex = '0' .. hex
-        end
-
-        hexadecimal = hexadecimal .. hex
-    end
-    return hexadecimal
-end
-
-minetest.register_on_chat_message(function(name, message)
-    if (minetest.settings:get_bool("no_chat_intercept")) then
-        return false
-    end
-    if (minetest.get_player_by_name(name)) then
-        local x = minetest.deserialize(storage:get_string("faction_color"))
-        local player = minetest.get_player_by_name(name)
-        if not x then
-            x = {}
-
-            x[player:get_attribute("faction")] = {
-                r = 255,
-                b = 255,
-                g = 255
-            }
-
-            storage:set_string("faction_color", minetest.serialize(x))
-        end
-
-        local colors = x[player:get_attribute("faction")]
-        minetest.chat_send_all(minetest.get_color_escape_sequence(rgb_to_hex(colors)) .. " [" .. minetest.get_player_by_name(name):get_attribute("faction") .. "]  <".. name .. "> " ..message)
-        return true
-    else
-        return false
-    end
 end)
