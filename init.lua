@@ -16,7 +16,7 @@
 local gen_def = dofile(minetest.get_modpath("coop_factions") .. "/utils/base.lua")
 local actions = dofile(minetest.get_modpath("coop_factions") .. "/utils/actions.lua")
 
-nametag_mgr.ensure_modifier("coop_factions", " (", " faction)")
+nametag_mgr.register_mod("coop_factions", " (", " faction)")
 
 factions = {}
 
@@ -129,8 +129,8 @@ minetest.register_chatcommand("start_faction", {
         privs.faction_leader = true
         minetest.set_player_privs(username, privs)
 
-        nametag_mgr.ensure_modifier_group("coop_factions", params)
-        nametag_mgr.set_player_modifier_group(username, "coop_factions", params)
+        nametag_mgr.register_mod_group("coop_factions", params)
+        nametag_mgr.set_player_mod_group(username, "coop_factions", params)
         
         minetest.chat_send_player(username, "Created the "..params.." faction, with you as leader.")
     end
@@ -190,7 +190,7 @@ minetest.register_chatcommand("join_faction", {
         local nick = user:get_attribute("faction")
         factions.set_player_faction(username, nick)
         
-        nametag_mgr.set_player_modifier_group(username, "coop_factions", param)
+        nametag_mgr.set_player_mod_group(username, "coop_factions", param)
         
         return true, "You've joined the "..param.." faction."
     end
@@ -222,7 +222,7 @@ minetest.register_chatcommand("set_faction_color", {
         }
 
         local hexColor = rgb_to_hex(rgb)
-        nametag_mgr.ensure_modifier_group("coop_factions", factionName, hexColor)
+        nametag_mgr.register_mod_group("coop_factions", factionName, hexColor)
         
         return true, "Updated the color of your faction ("..factionName..") to "..hexColor.."."
     end
