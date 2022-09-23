@@ -13,10 +13,12 @@
 ---- Misc init stuff ----
 -------------------------
 
-local gen_def = dofile(minetest.get_modpath("coop_factions") .. "/utils/base.lua")
-local actions = dofile(minetest.get_modpath("coop_factions") .. "/utils/actions.lua")
+local modName = "coop_factions"
+local utilsPath = minetest.get_modpath(modName).."/utils/"
+local gen_def = dofile(utilsPath.."base.lua")
+local actions = dofile(utilsPath.."actions.lua")
 
-nametag_mgr.register_mod("coop_factions", " (", " faction)")
+nametag_mgr.register_mod(modName, " (", " faction)")
 
 factions = {}
 
@@ -129,8 +131,8 @@ minetest.register_chatcommand("start_faction", {
         privs.faction_leader = true
         minetest.set_player_privs(username, privs)
 
-        nametag_mgr.register_mod_group("coop_factions", params)
-        nametag_mgr.set_player_mod_group(username, "coop_factions", params)
+        nametag_mgr.register_mod_group(modName, params)
+        nametag_mgr.set_player_mod_group(username, modName, params)
         
         minetest.chat_send_player(username, "Created the "..params.." faction, with you as leader.")
     end
@@ -190,7 +192,7 @@ minetest.register_chatcommand("join_faction", {
         local nick = user:get_attribute("faction")
         factions.set_player_faction(username, nick)
         
-        nametag_mgr.set_player_mod_group(username, "coop_factions", param)
+        nametag_mgr.set_player_mod_group(username, modName, param)
         
         return true, "You've joined the "..param.." faction."
     end
@@ -222,7 +224,7 @@ minetest.register_chatcommand("set_faction_color", {
         }
 
         local hexColor = rgb_to_hex(rgb)
-        nametag_mgr.register_mod_group("coop_factions", factionName, hexColor)
+        nametag_mgr.register_mod_group(modName, factionName, hexColor)
         
         return true, "Updated the color of your faction ("..factionName..") to "..hexColor.."."
     end
@@ -404,10 +406,11 @@ local chest = gen_def({
 ---------------------------
 
 -- Factions Chest
-minetest.register_node("coop_factions:chest", chest)
+local chestName = modName..":chest"
+minetest.register_node(chestName, chest)
 
 minetest.register_craft({ -- Like the normal craft but logs instead of planks
-    output = "coop_factions:chest", -- And there's a mese crystal in the middle
+    output = chestName, -- And there's a mese crystal in the middle
     recipe = {
         {"group:tree", "group:tree",           "group:tree"},
         {"group:tree", "default:mese_crystal", "group:tree"},
@@ -416,7 +419,7 @@ minetest.register_craft({ -- Like the normal craft but logs instead of planks
 })
 
 minetest.register_craft({ -- Or you can combine 4 normal chests
-    output = "coop_factions:chest", -- around a mese crystal
+    output = chestName, -- around a mese crystal
     recipe = {
         {"",              "default:chest",        ""},
         {"default:chest", "default:mese_crystal", "default:chest"},
@@ -426,7 +429,7 @@ minetest.register_craft({ -- Or you can combine 4 normal chests
 
 minetest.register_craft({ -- Factions chests can be used as fuel in a furnace
     type = "fuel", -- with the same burn time as a normal default:chest
-    recipe = "factions:chest",
+    recipe = chestName,
     burntime = 30,
 })
 
@@ -451,7 +454,8 @@ local chest_remover_toolcaps = { -- Everything takes 0 seconds to mine
     damage_groups = {fleshy = 1000}, -- 1000 damage - also a very powerful weapon
 }
 
-minetest.register_tool("coop_factions:chest_remover", {
+local chestRemoverName = modName..":chest_remover"
+minetest.register_tool(chestRemoverName, {
 	  description = "Chest Remover (breaks non-empty chests)",
 	  range = 100,
 	  inventory_image = "factions_chest_remover.png",
@@ -460,7 +464,7 @@ minetest.register_tool("coop_factions:chest_remover", {
 })
 
 minetest.register_on_punchnode(function(pos, node, puncher)
-	  if puncher:get_wielded_item():get_name() == "coop_factions:chest_remover"
+	  if puncher:get_wielded_item():get_name() == chestRemoverName
 	  and minetest.get_node(pos).name ~= "air" then
 		    -- The node is removed directly, which means it even works
 		    -- on non-empty containers and group-less nodes
